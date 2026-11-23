@@ -528,7 +528,7 @@
   // ---------- init ----------
   function seedForm() {
     var today = new Date();
-    $('#f_date').value = today.toISOString().slice(0, 10);
+    $('#f_date').value = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
     refreshNumber();
     syncTaxRateInputs();
     $('#f_cgst').value = S.dcgst; $('#f_sgst').value = S.dsgst; $('#f_igst').value = S.digst;
