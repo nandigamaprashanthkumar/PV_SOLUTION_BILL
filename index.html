@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>PV Solutions — Billing</title>
+<meta name="theme-color" content="#0d6e73" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="icons/icon-192.png" />
+<style>
+  :root{
+    --ink:#1a202c; --muted:#6b7280; --accent:#0d6e73; --accent-d:#0a585c;
+    --soft:#e0f0f0; --line:#e2e8f0; --bg:#f4f6f8; --card:#ffffff; --qty:#c65d07;
+    --ok:#15803d; --warn:#b45309; --err:#b91c1c; --radius:12px;
+    --shadow:0 1px 3px rgba(0,0,0,.08),0 8px 24px rgba(0,0,0,.05);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:15px;line-height:1.45;-webkit-text-size-adjust:100%}
+  a{color:var(--accent)}
+  .appbar{position:sticky;top:0;z-index:20;background:#fff;border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:12px;padding:10px 16px;padding-top:max(10px,env(safe-area-inset-top))}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:.3px}
+  .logo-sq{width:30px;height:30px;border-radius:7px;background:#111;color:#fff;display:grid;place-items:center;
+    font-weight:800;font-size:12px}
+  .spacer{flex:1}
+  .netdot{width:9px;height:9px;border-radius:50%;background:#cbd5e1}
+  .netdot.on{background:var(--ok)} .netdot.off{background:#cbd5e1}
+  .gchip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:999px;
+    padding:5px 12px;font-size:13px;cursor:pointer;background:#fff;white-space:nowrap}
+  .gchip b{font-weight:600}
+  .tabs{display:flex;gap:4px;background:#fff;border-bottom:1px solid var(--line);padding:0 12px;
+    position:sticky;top:51px;z-index:19;overflow-x:auto}
+  .tab{appearance:none;border:0;background:none;padding:12px 14px;font-size:14px;font-weight:600;color:var(--muted);
+    border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+  .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+  main{max-width:900px;margin:0 auto;padding:18px 16px 120px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:16px;box-shadow:var(--shadow)}
+  .card h2{margin:0 0 14px;font-size:15px;letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
+  .card h3{margin:18px 0 10px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin:0 0 4px}
+  input,textarea,select{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;font:inherit;
+    background:#fff;color:var(--ink)}
+  input:focus,textarea:focus,select:focus{outline:2px solid var(--soft);border-color:var(--accent)}
+  textarea{resize:vertical;min-height:70px}
+  .grid{display:grid;gap:12px}
+  .g2{grid-template-columns:1fr 1fr} .g3{grid-template-columns:1fr 1fr 1fr} .g4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:640px){.g2,.g3,.g4{grid-template-columns:1fr}}
+  .field{margin-bottom:12px}
+  .btn{appearance:none;border:1px solid var(--line);background:#fff;color:var(--ink);padding:10px 16px;
+    border-radius:10px;font-weight:600;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+  .btn:hover{background:#f8fafc}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{background:var(--accent-d)}
+  .btn.ghost{background:none;border-color:transparent;color:var(--accent)}
+  .btn.sm{padding:6px 10px;font-size:13px}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  table{width:100%;border-collapse:collapse}
+  .items th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);text-align:left;padding:6px 6px;border-bottom:1px solid var(--line)}
+  .items td{padding:5px 4px;border-bottom:1px solid var(--line);vertical-align:top}
+  .items input{padding:7px 8px}
+  .items .num{text-align:right}
+  .rowdel{color:var(--err);border:0;background:none;cursor:pointer;font-size:18px;line-height:1;padding:4px}
+  .totbox{margin-left:auto;max-width:320px;margin-top:14px}
+  .totrow{display:flex;justify-content:space-between;padding:4px 0;font-size:14px;color:var(--muted)}
+  .totrow b{color:var(--ink)}
+  .totrow.grand{margin-top:8px;padding:10px 12px;background:var(--ink);color:#fff;border-radius:9px;font-size:16px}
+  .totrow.grand span,.totrow.grand b{color:#fff}
+  .toolbar{position:fixed;left:0;right:0;bottom:0;z-index:25;background:#fff;border-top:1px solid var(--line);
+    padding:12px 16px;padding-bottom:max(12px,env(safe-area-inset-bottom));display:flex;gap:10px;justify-content:flex-end;
+    max-width:900px;margin:0 auto}
+  .toolbar .grow{flex:1}
+  .pill{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;border:1px solid var(--line)}
+  .pill.ok{color:var(--ok);border-color:#bbf7d0;background:#f0fdf4}
+  .pill.pend{color:var(--warn);border-color:#fde68a;background:#fffbeb}
+  .pill.err{color:var(--err);border-color:#fecaca;background:#fef2f2}
+  .pill.off{color:var(--muted)}
+  .hlist{display:flex;flex-direction:column;gap:10px}
+  .hrow{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line);border-radius:10px}
+  .hrow .meta{flex:1;min-width:0}
+  .hrow .meta .no{font-weight:700}
+  .hrow .meta .sub{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hrow .amt{font-weight:700;white-space:nowrap}
+  .muted{color:var(--muted);font-size:13px}
+  .hint{font-size:12px;color:var(--muted);margin-top:4px}
+  .logo-prev{height:54px;border:1px solid var(--line);border-radius:8px;padding:4px;background:#fff}
+  .toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--ink);color:#fff;
+    padding:10px 16px;border-radius:999px;font-size:13.5px;z-index:40;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .2s;max-width:92%}
+  .toast.show{opacity:1}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .seg button{border:0;background:#fff;padding:8px 14px;font:inherit;font-weight:600;cursor:pointer;color:var(--muted)}
+  .seg button.active{background:var(--accent);color:#fff}
+  .banner{display:none;background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13.5px}
+  .banner.show{display:block}
+  code{background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="appbar">
+  <div class="brand"><span class="logo-sq" id="barLogo">PV</span><span>PV Solutions · Billing</span></div>
+  <span class="spacer"></span>
+  <span class="netdot" id="netDot" title="connection"></span>
+  <button class="gchip" id="gBtn"><span id="gTxt">Sign in with Google</span></button>
+</div>
+
+<div class="tabs">
+  <button class="tab active" data-tab="new">New Invoice</button>
+  <button class="tab" data-tab="history">History</button>
+  <button class="tab" data-tab="settings">Settings</button>
+</div>
+
+<main>
+  <div id="setupBanner" class="banner"></div>
+
+  <!-- ===================== NEW INVOICE ===================== -->
+  <section id="tab-new">
+    <div class="card">
+      <h2>Invoice</h2>
+      <div class="grid g3">
+        <div><label>Invoice No.</label><input id="f_number" /></div>
+        <div><label>Issue Date</label><input id="f_date" type="date" /></div>
+        <div>
+          <label>Place of supply</label>
+          <div class="seg" id="f_taxmode">
+            <button type="button" data-m="intra" class="active">Same state · CGST+SGST</button>
+            <button type="button" data-m="inter">Other state · IGST</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Bill To</h2>
+      <div class="field"><label>Business / Customer name</label><input id="f_buyer" placeholder="KMD ENGINEERING WORKS" /></div>
+      <div class="field"><label>Address</label><textarea id="f_buyerAddr" placeholder="B 10 CO OP INDS ESTATE,&#10;BALANAGAR, MEDCHAL-MALKAJGIRI,&#10;TELANGANA - 500037"></textarea></div>
+      <div class="field"><label>GSTIN</label><input id="f_buyerGstin" placeholder="36AANFK2842F1ZA" /></div>
+    </div>
+
+    <div class="card">
+      <h2>Items</h2>
+      <div style="overflow-x:auto">
+      <table class="items">
+        <thead><tr>
+          <th style="width:34px">#</th><th>Description</th><th style="width:110px">HSN</th>
+          <th style="width:70px" class="num">Qty</th><th style="width:110px" class="num">Rate</th>
+          <th style="width:120px" class="num">Amount</th><th style="width:28px"></th>
+        </tr></thead>
+        <tbody id="itemsBody"></tbody>
+      </table>
+      </div>
+      <button class="btn sm" id="addRow" style="margin-top:10px">+ Add item</button>
+
+      <div class="grid g3" style="margin-top:16px">
+        <div><label>CGST %</label><input id="f_cgst" type="number" step="0.01" /></div>
+        <div><label>SGST %</label><input id="f_sgst" type="number" step="0.01" /></div>
+        <div><label>IGST %</label><input id="f_igst" type="number" step="0.01" /></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-weight:600;color:var(--ink)">
+        <input type="checkbox" id="f_round" style="width:auto" checked /> Round off total to nearest rupee
+      </label>
+
+      <div class="totbox">
+        <div class="totrow"><span>Subtotal</span><b id="t_sub">0.00</b></div>
+        <div class="totrow" id="t_cgstRow"><span id="t_cgstL">CGST</span><b id="t_cgst">0.00</b></div>
+        <div class="totrow" id="t_sgstRow"><span id="t_sgstL">SGST</span><b id="t_sgst">0.00</b></div>
+        <div class="totrow" id="t_igstRow" style="display:none"><span id="t_igstL">IGST</span><b id="t_igst">0.00</b></div>
+        <div class="totrow" id="t_roundRow"><span>Round off</span><b id="t_round">0.00</b></div>
+        <div class="totrow grand"><span>TOTAL</span><b id="t_total">INR 0.00</b></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== HISTORY ===================== -->
+  <section id="tab-history" style="display:none">
+    <div class="card">
+      <h2>Invoice records</h2>
+      <input id="histSearch" placeholder="Search by number, buyer…" style="margin-bottom:14px" />
+      <div class="hlist" id="histList"></div>
+      <p class="muted" id="histEmpty" style="display:none">No invoices yet. Generate your first one from the New Invoice tab.</p>
+    </div>
+  </section>
+
+  <!-- ===================== SETTINGS ===================== -->
+  <section id="tab-settings" style="display:none">
+    <div class="card">
+      <h2>Business details</h2>
+      <div class="field"><label>Seller name</label><input id="s_name" /></div>
+      <div class="field"><label>Address (one line per row)</label><textarea id="s_addr"></textarea></div>
+      <div class="grid g2">
+        <div class="field"><label>GSTIN</label><input id="s_gstin" /></div>
+        <div class="field"><label>Signatory name</label><input id="s_sign" /></div>
+      </div>
+      <div class="grid g3">
+        <div class="field"><label>Location</label><input id="s_loc" /></div>
+        <div class="field"><label>Email</label><input id="s_mail" /></div>
+        <div class="field"><label>Phone</label><input id="s_phone" /></div>
+      </div>
+      <div class="field">
+        <label>Logo (optional — replaces the PV box)</label>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <input id="s_logo" type="file" accept="image/png,image/jpeg" style="max-width:280px" />
+          <img id="s_logoPrev" class="logo-prev" style="display:none" />
+          <button class="btn sm" id="s_logoClear" style="display:none">Remove</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Bank details</h2>
+      <div class="grid g2">
+        <div class="field"><label>Account name</label><input id="s_bankName" /></div>
+        <div class="field"><label>Account number</label><input id="s_bankNo" /></div>
+        <div class="field"><label>Branch</label><input id="s_bankBranch" /></div>
+        <div class="field"><label>IFSC</label><input id="s_bankIfsc" /></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Numbering</h2>
+      <div class="grid g2">
+        <div class="field"><label>Number template</label><input id="s_tmpl" />
+          <div class="hint"><code>{FY}</code> = financial year, <code>{NUM}</code> = serial. e.g. <code>PVSOL.PV/{FY}/ IN - {NUM}</code></div></div>
+        <div class="field"><label>Serial padding (digits)</label><input id="s_pad" type="number" min="1" max="6" /></div>
+      </div>
+      <div class="grid g3">
+        <div class="field"><label>Current financial year</label><input id="s_fy" readonly /></div>
+        <div class="field"><label>Last serial used (this FY)</label><input id="s_last" type="number" /></div>
+        <div class="field"><label>Default CGST / SGST / IGST %</label>
+          <div class="grid g3" style="gap:6px">
+            <input id="s_dcgst" type="number" step="0.01" /><input id="s_dsgst" type="number" step="0.01" /><input id="s_digst" type="number" step="0.01" />
+          </div>
+        </div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:600;color:var(--ink)">
+        <input type="checkbox" id="s_reset" style="width:auto" /> Reset serial to 1 each new financial year
+      </label>
+    </div>
+
+    <div class="card">
+      <h2>Cloud sync</h2>
+      <h3>Google Drive (in-app sign-in)</h3>
+      <div class="field"><label>Google OAuth Client ID</label><input id="s_gid" placeholder="xxxxx.apps.googleusercontent.com" /></div>
+      <div class="field"><label>Drive root folder name</label><input id="s_driveRoot" /></div>
+      <h3>GitHub (via Apps Script backend)</h3>
+      <div class="field"><label>Apps Script web-app URL</label><input id="s_gasUrl" placeholder="https://script.google.com/macros/s/…/exec" /></div>
+      <div class="field"><label>Shared secret (must match the script)</label><input id="s_gasSecret" /></div>
+      <div class="grid g2">
+        <div class="field"><label>GitHub owner (user/org)</label><input id="s_ghOwner" /></div>
+        <div class="field"><label>GitHub repo</label><input id="s_ghRepo" /></div>
+      </div>
+      <div class="hint">The GitHub token lives inside your Apps Script, never in this app. See the setup guide.</div>
+    </div>
+
+    <div class="card">
+      <h2>Backup</h2>
+      <p class="muted">Your settings and all invoice records live on this device. Export a backup regularly.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn" id="btnExport">Export backup (.json)</button>
+        <label class="btn" style="margin:0">Import backup<input id="importFile" type="file" accept="application/json" style="display:none" /></label>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="toolbar" id="toolbarNew">
+  <div class="grow"><span class="muted" id="syncLine"></span></div>
+  <button class="btn" id="btnPreview">Preview</button>
+  <button class="btn primary" id="btnGenerate">Generate &amp; Save</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="vendor/jspdf.umd.min.js"></script>
+<script src="invoice-pdf.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="app.js"></script>
+</body>
+</html>
