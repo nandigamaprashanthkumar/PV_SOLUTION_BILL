@@ -83,7 +83,7 @@
     return start + '-' + String((start + 1) % 100).padStart(2, '0');
   }
   function monthFolder(d) { return String(d.getMonth() + 1).padStart(2, '0') + '-' + MONTHS[d.getMonth()]; }
-  function dateDisplay(d) { return String(d.getDate()).padStart(2, '0') + ' ' + MON3[d.getMonth()] + ' ' + d.getFullYear(); }
+  function dateDisplay(d) { return String(d.getDate()).padStart(2, '0') + ' ' + MONTHS[d.getMonth()].toUpperCase() + ' ' + d.getFullYear(); }
   function lastSerial(fy) { return S.resetEachFY ? (S.counters[fy] || 0) : (S.counters.ALL || 0); }
   function setLastSerial(fy, n) { if (S.resetEachFY) S.counters[fy] = n; else S.counters.ALL = n; }
   function numberFor(fy, serial) {
@@ -236,7 +236,8 @@
     return {
       sellerName: S.name, sellerLines: S.addr.split('\n').map(function (x) { return x.trim(); }).filter(Boolean),
       gstin: S.gstin, bankAccName: S.bankName, bankAccNo: S.bankNo, bankBranch: S.bankBranch, bankIfsc: S.bankIfsc,
-      signatory: S.sign, location: S.loc, mail: S.mail, phone: S.phone, logoDataUrl: S.logo
+      signatory: S.sign, location: S.loc, mail: S.mail, phone: S.phone,
+      logoDataUrl: S.logo || (typeof window !== 'undefined' && window.PV_LOGO_DATAURL) || ''
     };
   }
   function parseDate(iso) { if (!iso) return new Date(); var p = iso.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }

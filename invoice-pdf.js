@@ -1,13 +1,6 @@
 /*
  * PV Solutions — Invoice PDF builder (shared browser + Node module)
- * Draws a crisp vector A4 tax invoice with a jsPDF instance.
- *
- * Usage:
- *   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
- *   buildInvoicePdf(doc, { settings, invoice });
- *   doc.save('invoice.pdf');  // browser
- *
- * No external deps beyond jsPDF. Pure, deterministic.
+ * Matches the original PV Solutions invoice layout exactly (monochrome).
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -15,313 +8,245 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  // ---- palette ----
-  const INK = [26, 32, 44];        // near-black slate
-  const MUTED = [107, 114, 128];   // grey
-  const ACCENT = [13, 110, 115];   // teal
-  const ACCENT_SOFT = [224, 240, 240];
-  const LINE = [214, 219, 223];
-  const QTY = [198, 93, 7];        // warm amber (matches original)
+  // ---- palette (monochrome, matches original) ----
+  var INK = [26, 26, 26];      // near-black
+  var MUTED = [90, 90, 90];    // address / secondary
+  var SEP = [150, 150, 150];   // ":" separators
+  var RULE = [26, 26, 26];     // black rules
 
-  // ---- Indian number helpers ----
+  // ---- Indian number format ----
   function formatINR(n, withDecimals) {
     if (n === null || n === undefined || isNaN(n)) n = 0;
-    const neg = n < 0;
-    n = Math.abs(n);
-    let intPart = Math.floor(n);
-    const dec = withDecimals ? ('.' + (Math.round((n - intPart) * 100)).toString().padStart(2, '0')) : '';
-    let s = intPart.toString();
-    // Indian grouping: last 3 digits, then pairs
-    let last3 = s.slice(-3);
-    let rest = s.slice(0, -3);
+    var neg = n < 0; n = Math.abs(n);
+    var intPart = Math.floor(n);
+    var dec = withDecimals ? ('.' + Math.round((n - intPart) * 100).toString().padStart(2, '0')) : '';
+    var s = intPart.toString();
+    var last3 = s.slice(-3), rest = s.slice(0, -3);
     if (rest) last3 = ',' + last3;
     rest = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',');
-    const out = rest + last3 + dec;
-    return (neg ? '-' : '') + out;
+    return (neg ? '-' : '') + rest + last3 + dec;
   }
 
-  const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
-    'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen',
-    'Eighteen', 'Nineteen'];
-  const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-
-  function twoDigit(n) {
-    if (n < 20) return ONES[n];
-    return (TENS[Math.floor(n / 10)] + (n % 10 ? ' ' + ONES[n % 10] : '')).trim();
-  }
+  var ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+    'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  var TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  function twoDigit(n) { return n < 20 ? ONES[n] : (TENS[Math.floor(n / 10)] + (n % 10 ? ' ' + ONES[n % 10] : '')).trim(); }
   function threeDigit(n) {
-    let str = '';
+    var str = '';
     if (n > 99) { str += ONES[Math.floor(n / 100)] + ' Hundred'; n %= 100; if (n) str += ' '; }
     if (n) str += twoDigit(n);
     return str;
   }
+  // Original style: "Five Lakhs Nineteen Thousand Two Hundred Rupees Only"
   function amountInWords(num) {
     num = Math.round(num);
-    if (num === 0) return 'Rupees Zero Only';
-    let words = '';
-    const crore = Math.floor(num / 10000000); num %= 10000000;
-    const lakh = Math.floor(num / 100000); num %= 100000;
-    const thousand = Math.floor(num / 1000); num %= 1000;
-    const hundred = num;
-    if (crore) words += threeDigit(crore) + ' Crore ';
-    if (lakh) words += threeDigit(lakh) + ' Lakh ';
-    if (thousand) words += threeDigit(thousand) + ' Thousand ';
-    if (hundred) words += threeDigit(hundred) + ' ';
-    return 'Rupees ' + words.trim() + ' Only';
+    if (num === 0) return 'Zero Rupees Only';
+    var w = '';
+    var crore = Math.floor(num / 10000000); num %= 10000000;
+    var lakh = Math.floor(num / 100000); num %= 100000;
+    var thousand = Math.floor(num / 1000); num %= 1000;
+    if (crore) w += threeDigit(crore) + ' Crores ';
+    if (lakh) w += threeDigit(lakh) + ' Lakhs ';
+    if (thousand) w += threeDigit(thousand) + ' Thousand ';
+    if (num) w += threeDigit(num) + ' ';
+    return w.trim() + ' Rupees Only';
   }
 
-  // ---- compute totals ----
   function computeTotals(invoice) {
-    const items = (invoice.items || []).map(function (it) {
-      const qty = Number(it.qty) || 0;
-      const price = Number(it.price) || 0;
+    var items = (invoice.items || []).map(function (it) {
+      var qty = Number(it.qty) || 0, price = Number(it.price) || 0;
       return { desc: it.desc || '', hsn: it.hsn || '', qty: qty, price: price, amount: qty * price };
     });
-    const subtotal = items.reduce(function (s, it) { return s + it.amount; }, 0);
-    const inter = invoice.taxMode === 'inter';
-    const cgstRate = inter ? 0 : (invoice.cgstRate != null ? Number(invoice.cgstRate) : 9);
-    const sgstRate = inter ? 0 : (invoice.sgstRate != null ? Number(invoice.sgstRate) : 9);
-    const igstRate = inter ? (invoice.igstRate != null ? Number(invoice.igstRate) : 18) : 0;
-    const cgst = subtotal * cgstRate / 100;
-    const sgst = subtotal * sgstRate / 100;
-    const igst = subtotal * igstRate / 100;
-    let total = subtotal + cgst + sgst + igst;
-    let roundOff = 0;
-    if (invoice.roundOff) {
-      const rounded = Math.round(total);
-      roundOff = rounded - total;
-      total = rounded;
-    }
-    return { items, subtotal, inter, cgstRate, sgstRate, igstRate, cgst, sgst, igst, roundOff, total };
+    var subtotal = items.reduce(function (s, it) { return s + it.amount; }, 0);
+    var inter = invoice.taxMode === 'inter';
+    var cgstRate = inter ? 0 : (invoice.cgstRate != null ? Number(invoice.cgstRate) : 9);
+    var sgstRate = inter ? 0 : (invoice.sgstRate != null ? Number(invoice.sgstRate) : 9);
+    var igstRate = inter ? (invoice.igstRate != null ? Number(invoice.igstRate) : 18) : 0;
+    var cgst = subtotal * cgstRate / 100, sgst = subtotal * sgstRate / 100, igst = subtotal * igstRate / 100;
+    var total = subtotal + cgst + sgst + igst, roundOff = 0;
+    if (invoice.roundOff) { var r = Math.round(total); roundOff = r - total; total = r; }
+    return { items: items, subtotal: subtotal, inter: inter, cgstRate: cgstRate, sgstRate: sgstRate, igstRate: igstRate, cgst: cgst, sgst: sgst, igst: igst, roundOff: roundOff, total: total };
   }
 
   function buildInvoicePdf(doc, data) {
-    const s = data.settings || {};
-    const inv = data.invoice || {};
-    const t = computeTotals(inv);
+    var s = data.settings || {}, inv = data.invoice || {}, t = computeTotals(inv);
+    var ML = 15, MR = 193, PW = 210;
 
-    const PW = 210, MX = 15, CW = PW - MX * 2;
-    const right = PW - MX;
-    let y = 16;
-
-    function setInk(c) { doc.setTextColor(c[0], c[1], c[2]); }
+    function ink(c) { doc.setTextColor(c[0], c[1], c[2]); }
     function font(style, size) { doc.setFont('helvetica', style); doc.setFontSize(size); }
+    function rule(x1, y, x2, w, c) { c = c || RULE; doc.setDrawColor(c[0], c[1], c[2]); doc.setLineWidth(w); doc.line(x1, y, x2, y); }
 
-    // ===== Header: wordmark + logo =====
-    font('bold', 26); setInk(INK);
-    doc.text((s.sellerName || 'PV SOLUTIONS').toUpperCase(), MX, y + 6);
+    // ===== header wordmark + logo =====
+    font('bold', 30); ink(INK);
+    doc.text((s.sellerName || 'PV SOLUTIONS').toUpperCase(), ML, 27);
 
-    // logo: uploaded image or drawn PV mark
-    const logoSize = 20, logoX = right - logoSize, logoY = y - 6;
-    if (s.logoDataUrl) {
-      try {
-        const fmt = /png/i.test(s.logoDataUrl) ? 'PNG' : 'JPEG';
-        doc.addImage(s.logoDataUrl, fmt, logoX, logoY, logoSize, logoSize);
-      } catch (e) { drawPVMark(doc, logoX, logoY, logoSize); }
-    } else {
-      drawPVMark(doc, logoX, logoY, logoSize);
-    }
+    var logo = s.logoDataUrl || (typeof window !== 'undefined' && window.PV_LOGO_DATAURL) || '';
+    var lsz = 27, lx = MR - lsz, ly = 9;
+    if (logo) { try { doc.addImage(logo, /png/i.test(logo) ? 'PNG' : 'JPEG', lx, ly, lsz, lsz); } catch (e) { drawMark(doc, lx, ly, lsz); } }
+    else drawMark(doc, lx, ly, lsz);
 
-    y += 12;
-    font('bold', 13); setInk(ACCENT);
-    doc.text('INVOICE', MX, y);
-    y += 3;
-    doc.setDrawColor(INK[0], INK[1], INK[2]); doc.setLineWidth(0.6);
-    doc.line(MX, y, right, y);
-    y += 8;
+    font('bold', 22); ink(INK);
+    doc.text('INVOICE', ML, 45);
+    rule(ML, 50, MR, 0.6);
 
     // ===== invoice no + issued date =====
-    font('bold', 9); setInk(INK);
-    doc.text(String(inv.number || ''), MX, y);
-    font('normal', 9); setInk(ACCENT);
-    doc.text('Issued Date : ', right - 48, y);
-    font('bold', 9); setInk(INK);
-    doc.text(String(inv.issuedDate || ''), right, y, { align: 'right' });
-    y += 9;
+    var y = 63;
+    font('bold', 11); ink(INK);
+    doc.text(String(inv.number || ''), ML, y);
+    font('normal', 11); ink(INK);
+    var dv = String(inv.issuedDate || '');
+    var dvW = doc.getTextWidth(dv);
+    font('bold', 11);
+    doc.text(dv, MR, y, { align: 'right' });
+    font('normal', 11); ink(INK);
+    var lblX = MR - dvW - 6;
+    doc.text('Issued Date', lblX - doc.getTextWidth('Issued Date  :  '), y);
+    ink(SEP);
+    doc.text(':', lblX - doc.getTextWidth(':  '), y);
 
     // ===== FROM / ISSUED TO =====
-    const colR = PW / 2 + 6;
-    font('bold', 8.5); setInk(ACCENT);
-    doc.text('FROM :', MX, y);
+    y = 78;
+    var colR = ML + 92;
+    font('bold', 12); ink(INK);
+    doc.text('FROM :', ML, y);
     doc.text('ISSUED TO :', colR, y);
-    y += 5;
 
-    const fromLines = [bold(s.sellerName || 'PV SOLUTIONS')].concat(s.sellerLines || [])
-      .concat(s.gstin ? [bold('GSTIN - ' + s.gstin)] : []);
-    const toLines = [bold(inv.buyerName || '')].concat(inv.buyerLines || [])
-      .concat(inv.buyerGstin ? [bold('GSTIN - ' + inv.buyerGstin)] : []);
+    var leftLines = [B(s.sellerName || 'PV SOLUTIONS'), ''].concat(s.sellerLines || [])
+      .concat(s.gstin ? [B('GSTIN - ' + s.gstin)] : []);
+    var rightLines = [B(inv.buyerName || ''), ''].concat(inv.buyerLines || [])
+      .concat(inv.buyerGstin ? [B('GSTIN - ' + inv.buyerGstin)] : []);
+    var yl = drawBlock(doc, leftLines, ML, y + 10, 82);
+    var yr = drawBlock(doc, rightLines, colR, y + 10, MR - colR);
+    y = Math.max(yl, yr);
 
-    const blockTop = y;
-    let yl = blockTop, yr = blockTop;
-    yl = drawLines(doc, fromLines, MX, yl, CW / 2 - 6);
-    yr = drawLines(doc, toLines, colR, yr, CW / 2 - 6);
-    y = Math.max(yl, yr) + 6;
+    // ===== items table =====
+    var TH = Math.max(y + 12, 124);
+    var xQ = 112, xH = 150, xP = MR;    // QTY center, HSN center, PRICE right
+    font('bold', 11); ink(INK);
+    doc.text('DESCRIPTION', ML, TH);
+    doc.text('QTY', xQ, TH, { align: 'center' });
+    doc.text('HSN', xH, TH, { align: 'center' });
+    doc.text('PRICE', xP, TH, { align: 'right' });
+    rule(ML, TH + 4, MR, 0.6);
 
-    // ===== Items table =====
-    // columns: #, DESCRIPTION, HSN, QTY, RATE, AMOUNT
-    const cNo = MX;
-    const cDescX = MX + 8;
-    const cAmtR = right;                 // amount right edge
-    const cRateR = right - 30;           // rate right edge
-    const cQtyR = cRateR - 24;           // qty right edge
-    const cHsnX = cQtyR - 32;            // hsn left
-    const descW = cHsnX - cDescX - 2;
-
-    // header band
-    doc.setFillColor(ACCENT_SOFT[0], ACCENT_SOFT[1], ACCENT_SOFT[2]);
-    doc.rect(MX, y - 4.5, CW, 7, 'F');
-    font('bold', 8); setInk(ACCENT);
-    doc.text('#', cNo + 1, y);
-    doc.text('DESCRIPTION', cDescX, y);
-    doc.text('HSN', cHsnX, y);
-    doc.text('QTY', cQtyR, y, { align: 'right' });
-    doc.text('RATE', cRateR, y, { align: 'right' });
-    doc.text('AMOUNT', cAmtR, y, { align: 'right' });
-    y += 6;
-
-    font('normal', 8.5);
+    var ry = TH + 13;
+    font('normal', 11);
+    var descL = ML + 6, descW = 92;
     t.items.forEach(function (it, i) {
-      const wrapped = doc.splitTextToSize(it.desc || '', descW);
-      const rowH = Math.max(6, wrapped.length * 4 + 2);
-      setInk(MUTED);
-      doc.text(String(i + 1) + '.', cNo + 1, y);
-      setInk(INK);
-      doc.text(wrapped, cDescX, y);
-      setInk(MUTED);
-      doc.text(String(it.hsn || ''), cHsnX, y);
-      doc.setTextColor(QTY[0], QTY[1], QTY[2]);
-      font('bold', 8.5);
-      doc.text(String(it.qty), cQtyR, y, { align: 'right' });
-      font('normal', 8.5); setInk(INK);
-      doc.text(formatINR(it.price), cRateR, y, { align: 'right' });
-      doc.text(formatINR(it.amount), cAmtR, y, { align: 'right' });
-      y += rowH;
-      doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.setLineWidth(0.2);
-      doc.line(MX, y - 3.5, right, y - 3.5);
+      var wrapped = doc.splitTextToSize(it.desc || '', descW);
+      ink(INK);
+      doc.text(String(i + 1) + '.', ML, ry);
+      doc.text(wrapped, descL, ry);
+      doc.text(formatINR(it.qty, true), xQ, ry, { align: 'center' });
+      doc.text(String(it.hsn || ''), xH, ry, { align: 'center' });
+      doc.text(formatINR(it.price, true), xP, ry, { align: 'right' });
+      ry += Math.max(9, wrapped.length * 5 + 4);
     });
+    rule(ML, ry, MR, 0.6);
 
-    y += 3;
-
-    // ===== Totals (right aligned block) =====
-    const labelR = cRateR;      // label right edge
-    const valR = cAmtR;
-    function totalRow(label, value, opts) {
-      opts = opts || {};
-      font(opts.bold ? 'bold' : 'normal', opts.size || 9);
-      setInk(opts.bold ? INK : MUTED);
-      doc.text(label, labelR, y, { align: 'right' });
-      setInk(INK);
-      if (opts.bold) font('bold', opts.size || 9);
-      doc.text(value, valR, y, { align: 'right' });
-      y += opts.gap || 5.5;
+    // ===== totals =====
+    ry += 9;
+    var xLR = 165;
+    function trow(label, value, bold) {
+      font(bold ? 'bold' : 'bold', 11); ink(INK);
+      doc.text(label, xLR, ry, { align: 'right' });
+      font(bold ? 'bold' : 'normal', 11); ink(INK);
+      doc.text(value, xP, ry, { align: 'right' });
+      ry += 8;
     }
-    totalRow('Subtotal', formatINR(t.subtotal, true));
-    if (t.inter) {
-      totalRow('IGST ' + t.igstRate + '%', formatINR(t.igst, true));
-    } else {
-      totalRow('CGST ' + t.cgstRate + '%', formatINR(t.cgst, true));
-      totalRow('SGST ' + t.sgstRate + '%', formatINR(t.sgst, true));
-    }
-    if (inv.roundOff && Math.abs(t.roundOff) >= 0.005) {
-      totalRow('Round Off', (t.roundOff >= 0 ? '+' : '') + formatINR(t.roundOff, true));
-    }
-    // total band
-    y += 1;
-    doc.setFillColor(INK[0], INK[1], INK[2]);
-    doc.rect(labelR - 36, y - 4.5, (valR - labelR) + 36, 8, 'F');
-    doc.setTextColor(255, 255, 255);
-    font('bold', 10);
-    doc.text('TOTAL', labelR, y + 0.5, { align: 'right' });
-    doc.text('INR ' + formatINR(t.total, true), valR, y + 0.5, { align: 'right' });
-    y += 9;
+    trow('Subtotal', formatINR(t.subtotal, true));
+    if (t.inter) trow('IGST', formatINR(t.igst, true));
+    else { trow('CGST', formatINR(t.cgst, true)); trow('SGST', formatINR(t.sgst, true)); }
+    if (inv.roundOff && Math.abs(t.roundOff) >= 0.005) trow('Round Off', (t.roundOff >= 0 ? '+' : '') + formatINR(t.roundOff, true));
+    rule(xLR - 24, ry - 4, xP, 0.4);
+    ry += 1;
+    trow('Total', formatINR(t.total, true), true);
+    rule(xLR - 24, ry - 5, xP, 0.4);
 
-    // amount in words
-    font('italic', 8); setInk(MUTED);
-    const words = doc.splitTextToSize(amountInWords(t.total) + '.', CW);
-    doc.text(words, MX, y);
-    y += words.length * 4 + 4;
+    // ===== in words =====
+    ry += 10;
+    font('bold', 11); ink(INK);
+    doc.text('IN WORDS :', ML, ry);
+    var iwX = ML + doc.getTextWidth('IN WORDS :') + 3;
+    font('normal', 11); ink(INK);
+    doc.text(amountInWords(t.total), iwX, ry);
 
-    // ===== Payment + signatory =====
-    const payTop = Math.max(y, 232);
-    font('bold', 8.5); setInk(ACCENT);
-    doc.text('PAYMENT TO :', MX, payTop);
-    font('normal', 8.5); setInk(INK);
-    const payLines = [
-      [bold('A/c Name'), s.bankAccName || s.sellerName || ''],
-      [bold('A/c No.'), s.bankAccNo || ''],
-      [bold('Branch'), s.bankBranch || ''],
-      [bold('IFSC'), s.bankIfsc || '']
+    // ===== payment + signatory =====
+    var yPay = Math.max(ry + 18, 230);
+    font('bold', 12); ink(INK);
+    doc.text('PAYMENT TO :', ML, yPay);
+    var py = yPay + 7;
+    font('normal', 11); ink(INK);
+    doc.text(s.bankAccName || s.sellerName || 'PV SOLUTIONS', ML, py); py += 6;
+    var bank = [
+      ['Account No.', s.bankAccNo || ''],
+      ['Account Name', s.bankAccName || s.sellerName || ''],
+      ['Branch', s.bankBranch || ''],
+      ['IFSC CODE', s.bankIfsc || '']
     ];
-    let py = payTop + 5.5;
-    payLines.forEach(function (row) {
-      font('bold', 8.5); setInk(MUTED);
-      doc.text(row[0].t, MX, py);
-      font('normal', 8.5); setInk(INK);
-      doc.text(': ' + row[1], MX + 22, py);
-      py += 5;
+    bank.forEach(function (r) {
+      ink(INK); doc.text(r[0], ML, py);
+      ink(SEP); doc.text(':', ML + 32, py);
+      ink(INK); doc.text(String(r[1]), ML + 37, py);
+      py += 6.2;
     });
 
     // signatory box
-    const boxW = 58, boxH = 30, boxX = right - boxW, boxY = payTop - 2;
-    doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.setLineWidth(0.4);
-    doc.rect(boxX, boxY, boxW, boxH);
-    font('normal', 8); setInk(MUTED);
-    doc.text('For ' + (s.sellerName || 'PV SOLUTIONS'), boxX + 4, boxY + 6);
-    font('bold', 8.5); setInk(INK);
-    doc.text(s.signatory || 'Authorised Signatory', boxX + boxW - 4, boxY + boxH - 4, { align: 'right' });
+    var bx = 139, bw = MR - bx, by = yPay - 4, bh = 46;
+    doc.setDrawColor(INK[0], INK[1], INK[2]); doc.setLineWidth(0.5);
+    doc.rect(bx, by, bw, bh);
+    font('bold', 11); ink(INK);
+    doc.text('For ' + (s.sellerName || 'PV SOLUTIONS'), bx + bw / 2, by + 9, { align: 'center' });
+    doc.text('Authorised Signatory', bx + bw / 2, by + bh - 7, { align: 'center' });
 
-    // ===== Footer =====
-    const fy = 288;
-    doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.setLineWidth(0.3);
-    doc.line(MX, fy - 4, right, fy - 4);
-    font('bold', 7.5); setInk(ACCENT);
-    doc.text('Location:', MX, fy);
-    doc.text('Mail:', MX, fy + 4);
-    font('normal', 7.5); setInk(MUTED);
-    doc.text(' ' + (s.location || 'Hyderabad'), MX + 13, fy);
-    doc.text(' ' + (s.mail || ''), MX + 8, fy + 4);
-    font('bold', 7.5); setInk(ACCENT);
-    doc.text('Ph.No :', right - 44, fy, { align: 'left' });
-    font('normal', 7.5); setInk(MUTED);
-    doc.text(String(s.phone || ''), right, fy, { align: 'right' });
-    if (s.signatory) { doc.text(String(s.signatory), right, fy + 4, { align: 'right' }); }
+    // ===== footer =====
+    var fy = 281;
+    rule(ML, fy - 5, MR, 0.3, SEP);
+    font('bold', 8.5); ink(INK);
+    doc.text('Location :', ML, fy);
+    font('normal', 8.5); ink(MUTED);
+    doc.text(String(s.location || 'Hyderabad'), ML + doc.getTextWidth('Location : ') + 1, fy);
+    font('bold', 8.5); ink(INK);
+    doc.text('Mail :', ML, fy + 5);
+    font('normal', 8.5); ink(MUTED);
+    doc.text(String(s.mail || ''), ML + doc.getTextWidth('Mail : ') + 1, fy + 5);
+    font('bold', 8.5); ink(INK);
+    if (s.phone) {
+      var ph = 'PH.NO : ' + s.phone;
+      doc.text('PH.NO :', MR - doc.getTextWidth(ph), fy);
+      font('normal', 8.5); ink(MUTED);
+      doc.text(' ' + s.phone, MR - doc.getTextWidth(' ' + s.phone), fy);
+    }
+    font('bold', 8.5); ink(INK);
+    if (s.signatory) doc.text(String(s.signatory), MR, fy + 5, { align: 'right' });
 
     return doc;
   }
 
-  // helper: bold marker for mixed line rendering
-  function bold(text) { return { t: text, b: true }; }
-  function drawLines(doc, lines, x, y, w) {
+  function B(t) { return { t: t, b: true }; }
+  function drawBlock(doc, lines, x, y, w) {
     lines.forEach(function (ln) {
-      const isObj = typeof ln === 'object' && ln !== null;
-      const txt = isObj ? ln.t : ln;
-      doc.setFont('helvetica', isObj && ln.b ? 'bold' : 'normal');
-      doc.setFontSize(8.5);
-      doc.setTextColor(INK[0], INK[1], INK[2]);
-      const wrapped = doc.splitTextToSize(String(txt || ''), w);
-      doc.text(wrapped, x, y);
-      y += wrapped.length * 4.2;
+      if (ln === '') { y += 3.2; return; }
+      var isO = typeof ln === 'object';
+      var txt = isO ? ln.t : ln;
+      doc.setFont('helvetica', isO && ln.b ? 'bold' : 'normal');
+      doc.setFontSize(10.5);
+      doc.setTextColor(isO && ln.b ? INK[0] : MUTED[0], isO && ln.b ? INK[1] : MUTED[1], isO && ln.b ? INK[2] : MUTED[2]);
+      var wr = doc.splitTextToSize(String(txt || ''), w);
+      doc.text(wr, x, y);
+      y += wr.length * 5.0;
     });
     return y;
   }
-
-  // Draw the fallback "PV / SOLUTIONS" mark (black rounded square)
-  function drawPVMark(doc, x, y, size) {
+  function drawMark(doc, x, y, size) {
     doc.setFillColor(17, 17, 17);
-    doc.roundedRect(x, y, size, size, 2, 2, 'F');
+    doc.rect(x, y, size, size, 'F');
     doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(size * 0.42);
-    doc.text('PV', x + size / 2, y + size * 0.52, { align: 'center' });
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(size * 0.14);
-    doc.text('SOLUTIONS', x + size / 2, y + size * 0.74, { align: 'center' });
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(size * 0.4);
+    doc.text('PV', x + size / 2, y + size * 0.5, { align: 'center' });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(size * 0.13);
+    doc.text('SOLUTIONS', x + size / 2, y + size * 0.72, { align: 'center' });
   }
 
-  return {
-    buildInvoicePdf: buildInvoicePdf,
-    computeTotals: computeTotals,
-    formatINR: formatINR,
-    amountInWords: amountInWords
-  };
+  return { buildInvoicePdf: buildInvoicePdf, computeTotals: computeTotals, formatINR: formatINR, amountInWords: amountInWords };
 });
