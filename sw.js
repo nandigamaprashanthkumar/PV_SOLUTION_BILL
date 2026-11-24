@@ -1,5 +1,5 @@
 /* PV Billing — service worker (offline app shell) */
-var CACHE = 'pv-billing-v2';
+var CACHE = 'pv-billing-v3';
 var ASSETS = [
   './', './index.html', './app.js', './invoice-pdf.js', './logo.js',
   './vendor/jspdf.umd.min.js', './manifest.webmanifest',

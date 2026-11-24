@@ -121,17 +121,18 @@
 
     // ===== items table =====
     var TH = Math.max(y + 12, 124);
-    var xQ = 112, xH = 150, xP = MR;    // QTY center, HSN center, PRICE right
-    font('bold', 11); ink(INK);
+    var xQ = 95, xH = 121, xPrice = 161, xAmt = MR;   // QTY center, HSN center, PRICE right, AMOUNT right
+    font('bold', 10.5); ink(INK);
     doc.text('DESCRIPTION', ML, TH);
     doc.text('QTY', xQ, TH, { align: 'center' });
     doc.text('HSN', xH, TH, { align: 'center' });
-    doc.text('PRICE', xP, TH, { align: 'right' });
+    doc.text('PRICE', xPrice, TH, { align: 'right' });
+    doc.text('AMOUNT', xAmt, TH, { align: 'right' });
     rule(ML, TH + 4, MR, 0.6);
 
     var ry = TH + 13;
-    font('normal', 11);
-    var descL = ML + 6, descW = 92;
+    font('normal', 10.5);
+    var descL = ML + 6, descW = 66;
     t.items.forEach(function (it, i) {
       var wrapped = doc.splitTextToSize(it.desc || '', descW);
       ink(INK);
@@ -139,29 +140,30 @@
       doc.text(wrapped, descL, ry);
       doc.text(formatINR(it.qty, true), xQ, ry, { align: 'center' });
       doc.text(String(it.hsn || ''), xH, ry, { align: 'center' });
-      doc.text(formatINR(it.price, true), xP, ry, { align: 'right' });
+      doc.text(formatINR(it.price, true), xPrice, ry, { align: 'right' });
+      doc.text(formatINR(it.amount, true), xAmt, ry, { align: 'right' });
       ry += Math.max(9, wrapped.length * 5 + 4);
     });
     rule(ML, ry, MR, 0.6);
 
     // ===== totals =====
     ry += 9;
-    var xLR = 165;
+    var xLR = 161;
     function trow(label, value, bold) {
       font(bold ? 'bold' : 'bold', 11); ink(INK);
       doc.text(label, xLR, ry, { align: 'right' });
       font(bold ? 'bold' : 'normal', 11); ink(INK);
-      doc.text(value, xP, ry, { align: 'right' });
+      doc.text(value, xAmt, ry, { align: 'right' });
       ry += 8;
     }
     trow('Subtotal', formatINR(t.subtotal, true));
     if (t.inter) trow('IGST', formatINR(t.igst, true));
     else { trow('CGST', formatINR(t.cgst, true)); trow('SGST', formatINR(t.sgst, true)); }
     if (inv.roundOff && Math.abs(t.roundOff) >= 0.005) trow('Round Off', (t.roundOff >= 0 ? '+' : '') + formatINR(t.roundOff, true));
-    rule(xLR - 24, ry - 4, xP, 0.4);
+    rule(xLR - 24, ry - 4, xAmt, 0.4);
     ry += 1;
     trow('Total', formatINR(t.total, true), true);
-    rule(xLR - 24, ry - 5, xP, 0.4);
+    rule(xLR - 24, ry - 5, xAmt, 0.4);
 
     // ===== in words =====
     ry += 10;
